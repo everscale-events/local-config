@@ -3,6 +3,10 @@
 #
 # IMPORTANT: this script is meant to be run inside the Kafka container.
 #
+# Pay attention to the fact that there are 3 messages, 2 of which have the same key.
+# This is to demonstrate that messages with idempotency keys duplicated are handled
+# properly and the client doesn't receive the same notification more than once.
+#
 
 cat << EOF | kafka-console-producer.sh \
     --bootstrap-server kafka:9092 \
