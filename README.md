@@ -161,8 +161,7 @@ This will build all the Docker images and bring the services up.
 
 Now you need to build and deploy the Flink App. Do the following:
 ```shell
-$ docker pull clojure:openjdk-8-lein
-$ docker run -it --rm -v $PWD/core:/usr/src/app -w /usr/src/app clojure:openjdk-8-lein lein uberjar
+$ docker run --rm -v $PWD/core:/usr/src/app -w /usr/src/app clojure:openjdk-8-lein lein uberjar
 $ ./flink-app-reload.sh core/target/ton-events-1.0.0-SNAPSHOT-standalone.jar
 ```
 
