@@ -27,7 +27,10 @@ The dataflow program (Flink App for short) run by Flink does the following:
 - makes working with the notifications stream a pleasure:
     - allows to partition it by client-specific _hash_ as a key so that we're always dealing with the data, relevant to a specific client and there's no way to mess up;
     - allows to combine it with another stream (so called "control stream"), based on RabbitMQ queue, making notifications ignorable, for example, if a particular client doesn't have any alive subscriptions anymore.
-- provides [asynchronous means](https://ci.apache.org/projects/flink/flink-docs-master/docs/dev/datastream/operators/asyncio/) of sending notifications over HTTP(S) with retries on errors, being performed using configurable strategy with exponentially increasing delays between attempts (see [Appendix A](#appendix-a) for the details on configuration);
+- provides [asynchronous means](https://ci.apache.org/projects/flink/flink-docs-master/docs/dev/datastream/operators/asyncio/) of sending notifications over HTTP(S) with retries on errors, being performed using configurable retry strategy (see [Appendix A](#appendix-a) for the details on configuration);
+
+<div style="page-break-after: always"></div>
+
 - gathers and exposes a huge number of both built-in and user-defined (application-specific) metrics for increased observability of the system; visit [this page](https://ton.events:8086/orgs/00b6088f974b2aca/dashboards/084856f8d2c5c000) to see some of them visualized on the dashboard (username: `spectator`, password: `spectator`).
 
 The Flink App, written to do all the business logic described above, doesn't handle processing of Notification DeBot requests, i.e. actual registration of webhooks, though. For that purpose, there's a web service (Node.js) with an API Gateway (HAProxy) in front of it for TLS offloading, CORS and potentially useful stuff such as load balancing and rate limiting.
@@ -35,10 +38,10 @@ The web service itself is quite straight-forward and provides only one API route
 Specific feature of the web server, worth mentioning, is a webhook ownership confirmation, which technically is a _Challenge-Response Check (CRC)_ based on _HMAC-SHA256_ algorithm. It requires an additional GET-handler for each POST-route (i.e. webhook) on the client's side (see [Appendix C](#appendix-c) for details).
 When CRC is successfully completed, the web service sends a "subscribe command" to the control stream mentioned earlier, thus communicating with the Flink App through RabbitMQ.
 
-Now, when the webhook is successfully registered, the notifications stream will flow: a client will have notifications sent to each webhook they registered. In case of delivery failure, the Flink App will retry, exponentially increasing the delay between attempts (max delay duration is capped so that it won't increase after reaching a configured threshold). Retry process is asynchronous which allows other notifications to be sent without delay.
+When the webhook is successfully registered, a client will have notifications sent to each webhook they registered. In case of delivery failure, the Flink App will retry, exponentially increasing the delay between attempts (max delay duration is capped so that it won't increase after reaching a configured threshold). Retry process is asynchronous which allows other notifications to be sent without delay.
 If every attempt of notification delivery fails, the Flink App will send an "unsubscribe command" to the control stream, effectively forgetting a failing webhook to prevent such struggle in the future. The client will have to add this webhook again, if it's still relevant, or just happily forget about it as well, otherwise.
 
-Finally, if a client doesn't receive any messages for a reasonably long time (e.g. due to resetting subscription rules via Notification DeBot), all of their subscriptions are going to be forgotten for good. This is configurable, though, and is a measure which has to be taken, given that Notification DeBot doesn't notify Providers when clients reset their subscription rules.
+If the client doesn't receive any messages for a reasonably long time (e.g. due to resetting subscription rules via Notification DeBot), all of their subscriptions are going to be forgotten for good. This is configurable, though, and is a measure which has to be taken, given that Notification DeBot doesn't notify Providers when clients reset their subscription rules.
 
 Those are main design considerations.
 In the future, those decisions, hopefully, will allow extending the functionality with new means of notifications delivery such as MQTT, for example, or scale it alongside with the growing client base using Flink's great parallelism capabilities.
@@ -51,6 +54,8 @@ Globally available, fully functional version of the Provider lives at https://to
 You can test it by registering webhooks implemented in your own software or those provided for your convenience by a Telegram bot called `@ton_events_playground_bot`.
 You might wish to build, deploy and test the system from scratch, which is also possible using a local instance of Kafka (to mock the Queue Provider) and that same Playground Bot.
 See [Appendix E](#appendix-e) for details.
+
+<div style="page-break-after: always"></div>
 
 ### Appendix A
 
@@ -73,9 +78,8 @@ Configuration of both API service and the Flink App is achieved via environment 
 
 ### Appendix B
 
-<style>#header { text-align: left }</style>
 <table>
-<thead><tr><th id=header colspan="2">/api/v1/subscribe</th></tr></thead>
+<thead><tr><th align="left" colspan="2">/api/v1/subscribe</th></tr></thead>
 <tbody><tr>
 <td>verb: POST</td><td>Response code: 202 Accepted</td></tr>
 <tr><td colspan="2">
@@ -99,6 +103,8 @@ Response:
 ```
 
 </td></tr></tbody></table>
+
+<div style="page-break-after: always"></div>
 
 ### Appendix C
 
@@ -124,7 +130,6 @@ Additionally, each notification contains an `x-te-signature` header set to the _
 
 ![uml](gallery/ton.events.png)
 
-
 ### Appendix E
 
 #### Testing live
@@ -144,6 +149,8 @@ Otherwise, use the Playground Bot. Like that:
 4. If the URL is valid, Notification DeBot will reply with a JSON (containing a secret), which must be re-sent as-is to the Playground Bot as soon as possible. The time is limited because of the CRC, which starts at the same time the client receives the secret. There will be multiple attempts with delays so take your time but don't hesitate too long.
 5. As soon as the Playground Bot receives the valid secret, it will start showing all the notifications you're subscribed for, so don't forget to set up some rules via Notification DeBot. For example, you could subscribe to `all` events for your DevNet wallet and then send some tokens to/from it.
 6. _Optionally_, you can provide the Playground Bot with the key pair you received from Notification DeBot when your Notification contract was deployed for the first time. It's not recommended to share it with anybody in real life but for the testing purposes in DevNet it's quite harmless. Being provided with that key pair, the Playground Bot would be able to decrypt incoming notifications for you.
+
+<div style="page-break-after: always"></div>
 
 #### Testing locally
 
