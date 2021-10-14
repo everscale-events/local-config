@@ -24,21 +24,17 @@ The dataflow program (Flink App for short) run by Flink does the following:
     - no external database is used since everything needed for notifications routing and delivery is stored in a regularly checkpointed [job's state](https://nightlies.apache.org/flink/flink-docs-release-1.14/docs/concepts/stateful-stream-processing/);
     - provides reliable and transparent ways for updating the job without losing any data;
     - allows to configure TTL for each stored entity for a fine-grained control over the size of the state, which is useful, for example, for filtering out duplicated notifications by storing idempotency keys encountered in a given time window.
-- makes working with the notifications stream a pleasure:
-    - allows to partition it by client-specific _hash_ as a key so that we're always dealing with the data, relevant to a specific client and there's no way to mess up;
-    - allows to combine it with another stream (so called "control stream"), based on RabbitMQ queue, making notifications ignorable, for example, if a particular client doesn't have any alive subscriptions anymore.
 - provides [asynchronous means](https://ci.apache.org/projects/flink/flink-docs-master/docs/dev/datastream/operators/asyncio/) of sending notifications over HTTP(S) with retries on errors, being performed using configurable retry strategy (see [Appendix A](#appendix-a) for the details on configuration);
+- gathers and exposes a huge number of both built-in and user-defined (application-specific) metrics for increased observability of the system; visit [this page](https://ton.events:8086/orgs/00b6088f974b2aca/dashboards/084856f8d2c5c000) to see some of them visualized on the dashboard (username: `spectator`, password: `spectator`).
 
 <div style="page-break-after: always"></div>
 
-- gathers and exposes a huge number of both built-in and user-defined (application-specific) metrics for increased observability of the system; visit [this page](https://ton.events:8086/orgs/00b6088f974b2aca/dashboards/084856f8d2c5c000) to see some of them visualized on the dashboard (username: `spectator`, password: `spectator`).
-
-The Flink App, written to do all the business logic described above, doesn't handle processing of Notification DeBot requests, i.e. actual registration of webhooks, though. For that purpose, there's a web service (Node.js) with an API Gateway (HAProxy) in front of it for TLS offloading, CORS and potentially useful stuff such as load balancing and rate limiting.
+To process Notification DeBot requests, i.e. register the webhooks, there's a web service (Node.js) with an API gateway (HAProxy) in front of it (for TLS offloading, CORS and stuff like load balancing and rate limiting).
 The web service itself is quite straight-forward and provides only one API route used by Notification DeBot (see [Appendix B](#appendix-b) for a reference).
 Specific feature of the web server, worth mentioning, is a webhook ownership confirmation, which technically is a _Challenge-Response Check (CRC)_ based on _HMAC-SHA256_ algorithm. It requires an additional GET-handler for each POST-route (i.e. webhook) on the client's side (see [Appendix C](#appendix-c) for details).
-When CRC is successfully completed, the web service sends a "subscribe command" to the control stream mentioned earlier, thus communicating with the Flink App through RabbitMQ.
+When CRC is successfully completed, the web service sends a "subscribe command" to the control stream, communicating with the Flink App through RabbitMQ.
 
-When the webhook is successfully registered, a client will have notifications sent to each webhook they registered. In case of delivery failure, the Flink App will retry, exponentially increasing the delay between attempts (max delay duration is capped so that it won't increase after reaching a configured threshold). Retry process is asynchronous which allows other notifications to be sent without delay.
+When the webhook is successfully registered, a client will start receiving notifications. In case of delivery failure, the Flink App will retry, exponentially increasing the delay between attempts (max delay duration is capped so that it won't increase after reaching a configured threshold). Retry process is asynchronous which allows other notifications to be sent without delay.
 If every attempt of notification delivery fails, the Flink App will send an "unsubscribe command" to the control stream, effectively forgetting a failing webhook to prevent such struggle in the future. The client will have to add this webhook again, if it's still relevant, or just happily forget about it as well, otherwise.
 
 If the client doesn't receive any messages for a reasonably long time (e.g. due to resetting subscription rules via Notification DeBot), all of their subscriptions are going to be forgotten for good. This is configurable, though, and is a measure which has to be taken, given that Notification DeBot doesn't notify Providers when clients reset their subscription rules.
@@ -107,6 +103,8 @@ Response:
 <div style="page-break-after: always"></div>
 
 ### Appendix C
+
+Inspired by [Twitter](https://developer.twitter.com/en/docs/twitter-api/enterprise/account-activity-api/guides/securing-webhooks) and [LinkedIn](https://docs.microsoft.com/en-us/linkedin/shared/api-guide/webhook-validation).
 
 The webhook registration process ends with a _secret_ being returned to the client. After that, a CRC will be performed.
 
